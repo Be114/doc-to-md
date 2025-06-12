@@ -1,0 +1,36 @@
+# 対象サイトの設定
+target_site:
+  # 処理の起点となるURL
+  start_url: "https://docs.python.org/3/library/index.html"
+  # クロールを許可するURLのパターン（この文字列で始まるURLのみを対象とする）
+  allowed_domain: "https://docs.python.org/3/library/"
+
+# クロール設定
+crawler:
+  # クロール対象とするリンクが含まれる要素のCSSセレクタ
+  # 例：サイドバーのナビゲーションメニュー内にあるリンクのみを対象にする
+  navigation_selector: ".toctree-wrapper"
+  # 除外したいURLのパターン（正規表現も可）
+  exclude_patterns:
+    - ".*#.*"     # アンカーリンクを除外
+    - ".*/search.html"
+    - ".*/genindex.html"
+
+# コンテンツ抽出設定
+extractor:
+  # 抽出したい本文コンテンツが含まれるメイン要素のCSSセレクタ
+  content_selector: "div[role='main']"
+
+# 出力設定
+output:
+  # Markdownファイルを保存するベースディレクトリ
+  base_dir: "./output/python_docs"
+  # ダウンロードした画像を保存するディレクトリ
+  image_dir_name: "images"
+  # 画像をダウンロードするかどうか (true/false)
+  download_images: true
+
+# 実行設定
+execution:
+  # 各リクエスト間の待機時間（秒）。サーバーに負荷をかけないため。
+  request_delay: 1
