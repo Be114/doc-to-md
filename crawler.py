@@ -16,32 +16,56 @@ class URLPriorityQueue:
     """優先度付きURLキュー"""
     
     def __init__(self):
+        """
+        Initializes an empty priority queue for managing URLs.
+        """
         self._queue = []
         self._index = 0
     
     def put(self, url: str, priority: int = 0):
-        """URLをキューに追加（優先度が低い数字ほど高優先度）"""
+        """
+        Adds a URL to the priority queue with the specified priority.
+        
+        A lower priority value indicates higher priority for retrieval.
+        """
         heapq.heappush(self._queue, (priority, self._index, url))
         self._index += 1
     
     def get(self) -> Optional[str]:
-        """キューからURLを取得"""
+        """
+        Retrieves and removes the highest priority URL from the queue.
+        
+        Returns:
+            The URL with the highest priority, or None if the queue is empty.
+        """
         if self._queue:
             _, _, url = heapq.heappop(self._queue)
             return url
         return None
     
     def empty(self) -> bool:
-        """キューが空かどうか"""
+        """
+        Checks whether the priority queue is empty.
+        
+        Returns:
+            True if the queue contains no URLs; otherwise, False.
+        """
         return len(self._queue) == 0
     
     def size(self) -> int:
-        """キューのサイズ"""
+        """
+        Returns the number of URLs currently in the priority queue.
+        """
         return len(self._queue)
 
 
 class WebCrawler:
     def __init__(self, config):
+        """
+        Initializes the WebCrawler with the provided configuration.
+        
+        Sets up the HTTP session, logging, URL tracking structures, priority queue, and crawl statistics.
+        """
         self.config = config
         self._setup_session()
         self._setup_logging()
@@ -60,7 +84,11 @@ class WebCrawler:
         }
         
     def _setup_session(self):
-        """HTTPセッションの設定"""
+        """
+        Configures the HTTP session with custom headers and retry strategy.
+        
+        Sets up the session to use a specific User-Agent, appropriate Accept headers, and enables automatic retries for certain HTTP status codes.
+        """
         self.session = requests.Session()
         
         # User-Agentの設定
@@ -92,7 +120,11 @@ class WebCrawler:
         self.session.mount("https://", adapter)
     
     def _setup_logging(self):
-        """ログの設定"""
+        """
+        Configures the logger for the web crawler.
+        
+        Initializes a logger named 'web_crawler' with a stream handler and a standard formatter if not already set up.
+        """
         self.logger = logging.getLogger('web_crawler')
         if not self.logger.handlers:
             handler = logging.StreamHandler()
@@ -104,7 +136,11 @@ class WebCrawler:
             self.logger.setLevel(logging.INFO)
     
     def _normalize_url(self, url: str) -> str:
-        """URLを正規化（重複検出用）"""
+        """
+        Normalizes a URL for duplicate detection.
+        
+        Converts the scheme and network location to lowercase, removes query parameters and fragments, and trims trailing slashes from the path except for the root. Returns a lowercase fallback if normalization fails.
+        """
         try:
             parsed = urlparse(url)
             
@@ -123,7 +159,12 @@ class WebCrawler:
             return url.lower()
     
     def _is_valid_url(self, url: str) -> Tuple[bool, str]:
-        """URLが有効かどうかをチェック"""
+        """
+        Checks whether a URL is valid for crawling based on normalization, duplication, domain, and exclusion patterns.
+        
+        Returns:
+            A tuple containing a boolean indicating validity and a string describing the reason.
+        """
         if not url:
             return False, "空のURL"
         
@@ -162,7 +203,11 @@ class WebCrawler:
         return True, "有効"
     
     def _extract_links(self, url: str, html_content: str) -> List[Tuple[str, int]]:
-        """HTMLからリンクを抽出（優先度付き）"""
+        """
+        Extracts and prioritizes links from navigation elements in HTML content.
+        
+        Parses the provided HTML, selects navigation elements based on a configurable CSS selector, and extracts all anchor tags with href attributes. Converts relative URLs to absolute URLs, validates each URL, and assigns a priority score to each valid link. Returns a list of tuples containing the absolute URL and its priority.
+        """
         try:
             soup = BeautifulSoup(html_content, 'lxml')
             links = []
@@ -207,7 +252,18 @@ class WebCrawler:
             return []
     
     def _calculate_priority(self, url: str, link_element) -> int:
-        """リンクの優先度を計算"""
+        """
+        Calculates the priority score for a link based on its URL path depth and link text.
+        
+        The priority is lower for links with shallow paths and for those whose text contains high-priority keywords, and higher for links with deep paths or low-priority keywords. The returned priority is always non-negative.
+        
+        Args:
+            url: The absolute URL of the link.
+            link_element: The BeautifulSoup element representing the anchor tag.
+        
+        Returns:
+            An integer representing the calculated priority (lower values indicate higher priority).
+        """
         priority = 10  # デフォルト優先度
         
         # パスの深さで優先度を調整（浅いほど高優先度）
@@ -229,7 +285,17 @@ class WebCrawler:
         return max(0, priority)
     
     def _fetch_page(self, url: str) -> Optional[str]:
-        """ページを取得（リトライ機能付き）"""
+        """
+        Fetches the content of a web page with retry and timeout handling.
+        
+        Attempts to retrieve the specified URL using the configured HTTP session. Handles timeouts, HTTP errors, and unexpected exceptions. Adjusts response encoding if necessary. Updates failure statistics and logs relevant events.
+        
+        Args:
+            url: The URL of the web page to fetch.
+        
+        Returns:
+            The page content as a string if successful, or None if the request fails.
+        """
         try:
             self.logger.info(f"ページ取得中: {url}")
             
@@ -256,7 +322,11 @@ class WebCrawler:
             return None
     
     def crawl(self) -> List[str]:
-        """クロール実行"""
+        """
+        Performs a prioritized web crawl starting from the configured URL.
+        
+        Retrieves the start URL from the configuration, manages the crawl using a priority queue, fetches and processes each page, extracts and queues new links, and tracks crawl statistics. Returns a list of successfully crawled URLs.
+        """
         target_config = self.config.get('target_site', {})
         execution_config = self.config.get('execution', {})
         
@@ -317,7 +387,9 @@ class WebCrawler:
         return crawled_urls
     
     def _log_crawl_summary(self, crawled_urls: List[str]):
-        """クロール結果のサマリーをログ出力"""
+        """
+        Logs a summary of the crawl results, including counts of successful, failed, and skipped pages, and lists all collected URLs.
+        """
         self.logger.info("=== クロール完了 ===")
         self.logger.info(f"成功: {self.stats['total_crawled']} ページ")
         self.logger.info(f"失敗: {self.stats['total_failed']} ページ")
@@ -330,9 +402,18 @@ class WebCrawler:
                 self.logger.info(f"  {i:3d}. {url}")
     
     def get_page_content(self, url: str) -> Optional[str]:
-        """指定されたURLのページ内容を取得（converter用）"""
+        """
+        Fetches the content of the specified URL.
+        
+        Returns:
+            The page content as a string if successful, or None if the fetch fails.
+        """
         return self._fetch_page(url)
     
     def get_stats(self) -> Dict[str, int]:
-        """統計情報を取得"""
+        """
+        Returns a copy of the current crawl statistics.
+        
+        The statistics include counts of successfully crawled, failed, and skipped pages.
+        """
         return self.stats.copy()
