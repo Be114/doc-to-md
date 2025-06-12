@@ -158,7 +158,7 @@ class DocToMarkdownTool:
         print(f"\n出力ディレクトリ: {output_config['base_dir']}")
         
         # 詳細な統計をログに出力
-        self.crawler._log_crawl_summary(result.get('crawled_urls', []))
+        self.crawler.log_crawl_summary(result.get('crawled_urls', []))
         self.converter.log_summary()
 
 

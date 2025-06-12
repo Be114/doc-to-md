@@ -333,9 +333,10 @@ class WebCrawler:
     def mark_url_as_visited(self, url: str):
         """Mark a URL as visited"""
         normalized = self._normalize_url(url)
-        self.normalized_urls[normalized] = url
-        self.visited_urls.add(url)
-        self.stats['total_crawled'] += 1
+        if normalized not in self.normalized_urls:
+            self.normalized_urls[normalized] = url
+            self.visited_urls.add(url)
+            self.stats['total_crawled'] += 1
     
     def is_url_visited(self, url: str) -> bool:
         """Check if a URL has been visited"""
@@ -349,3 +350,7 @@ class WebCrawler:
     def get_stats(self) -> Dict[str, int]:
         """統計情報を取得"""
         return self.stats.copy()
+    
+    def log_crawl_summary(self, crawled_urls: List[str]):
+        """Public method to log crawl summary"""
+        self._log_crawl_summary(crawled_urls)
