@@ -12,17 +12,28 @@ from config_manager import ConfigManager
 from crawler import WebCrawler
 from converter import MarkdownConverter
 from error_types import ErrorHandler, FileSystemError, ErrorSeverity
+from logging_manager import setup_logging, LoggingManager, StructuredLogger
+from improvement_advisor import ImprovementAdvisor
 import logging
 
 
 class DocToMarkdownTool:
     def __init__(self, config_path="config.yaml"):
         self.config_manager = ConfigManager(config_path)
+        
+        # 包括的ログシステムの初期化
+        self.logging_manager = setup_logging(self.config_manager.config, "doc_to_md")
+        self.logging_manager.log_system_info()
+        
+        # 構造化ロガーの取得
+        self.logger = self.logging_manager.get_logger('doc_to_markdown_tool')
+        self.structured_logger = StructuredLogger(self.logger)
+        
+        # 各モジュールの初期化（ログ設定後）
         self.crawler = WebCrawler(self.config_manager.config)
         self.converter = MarkdownConverter(self.config_manager.config)
         
         # エラーハンドラーの初期化
-        self.logger = logging.getLogger('doc_to_markdown_tool')
         self.error_handler = ErrorHandler(self.logger)
     
     def _setup_output_directory(self):
@@ -89,6 +100,9 @@ class DocToMarkdownTool:
     
     def _crawl_and_convert(self):
         """クロールと変換を統合実行"""
+        import time
+        start_time = time.time()
+        
         target_config = self.config_manager.get_target_site()
         execution_config = self.config_manager.get_execution_config()
         
@@ -169,6 +183,10 @@ class DocToMarkdownTool:
                 failed_count += 1
                 continue
         
+        # 処理時間の計算
+        end_time = time.time()
+        processing_time = end_time - start_time
+        
         return {
             'success': True,
             'processed': processed_count,
@@ -176,7 +194,8 @@ class DocToMarkdownTool:
             'failed_count': failed_count,
             'crawled_urls': crawled_urls,
             'crawler_stats': self.crawler.get_stats(),
-            'converter_stats': self.converter.get_stats()
+            'converter_stats': self.converter.get_stats(),
+            'processing_time': processing_time
         }
     
     def _display_results(self, result):
@@ -208,6 +227,26 @@ class DocToMarkdownTool:
         # 全体のエラー統計サマリーを出力
         print("\n=== 全体エラー統計 ===")
         self.error_handler.log_error_summary()
+        
+        # 改善提案の生成と表示
+        advisor = ImprovementAdvisor(self.logger)
+        suggestions = advisor.analyze_results(
+            crawler_stats=result['crawler_stats'],
+            converter_stats=result['converter_stats'],
+            error_stats=self.error_handler.get_error_summary(),
+            config=self.config_manager.config,
+            total_processing_time=result.get('processing_time', 0)
+        )
+        
+        # 改善提案の表示
+        if suggestions:
+            print("\n" + advisor.generate_report(suggestions))
+        else:
+            print("\n=== 改善提案 ===")
+            print("実行に問題はありませんでした。設定は適切に動作しています。")
+        
+        # ログにも出力
+        advisor.log_suggestions(suggestions)
 
 
 def main():

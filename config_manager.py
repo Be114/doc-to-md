@@ -45,6 +45,16 @@ class ConfigManager:
         },
         'execution': {
             'request_delay': 1.0
+        },
+        'logging': {
+            'console_level': 'INFO',
+            'file_level': 'DEBUG',
+            'log_dir': './logs',
+            'max_file_size_mb': 5,
+            'backup_count': 5,
+            'enable_file_logging': True,
+            'log_format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            'date_format': '%Y-%m-%d %H:%M:%S'
         }
     }
     
@@ -146,7 +156,15 @@ class ConfigManager:
             ('output.base_dir', str),
             ('output.image_dir_name', str),
             ('output.download_images', bool),
-            ('execution.request_delay', (int, float))
+            ('execution.request_delay', (int, float)),
+            ('logging.console_level', str),
+            ('logging.file_level', str),
+            ('logging.log_dir', str),
+            ('logging.max_file_size_mb', (int, float)),
+            ('logging.backup_count', int),
+            ('logging.enable_file_logging', bool),
+            ('logging.log_format', str),
+            ('logging.date_format', str)
         ]
         
         for key_path, expected_type in type_checks:
@@ -217,6 +235,62 @@ class ConfigManager:
                     )
                     self.error_handler.handle_error(error)
                     raise ConfigValidationError(f"除外パターン '{pattern}' は有効な正規表現ではありません: {e}")
+        
+        # ログレベルの妥当性チェック
+        valid_log_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        
+        console_level = self._get_nested_value(config, 'logging.console_level')
+        if console_level and console_level.upper() not in valid_log_levels:
+            error = ConfigError(
+                message=f"logging.console_levelは有効なログレベルである必要があります: {', '.join(valid_log_levels)}",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError(f"logging.console_levelは有効なログレベルである必要があります: {', '.join(valid_log_levels)}")
+        
+        file_level = self._get_nested_value(config, 'logging.file_level')
+        if file_level and file_level.upper() not in valid_log_levels:
+            error = ConfigError(
+                message=f"logging.file_levelは有効なログレベルである必要があります: {', '.join(valid_log_levels)}",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError(f"logging.file_levelは有効なログレベルである必要があります: {', '.join(valid_log_levels)}")
+        
+        # ログファイルサイズとバックアップ数のチェック
+        max_file_size = self._get_nested_value(config, 'logging.max_file_size_mb')
+        if max_file_size is not None:
+            if max_file_size <= 0:
+                error = ConfigError(
+                    message="logging.max_file_size_mbは正の値である必要があります",
+                    severity=ErrorSeverity.CRITICAL
+                )
+                self.error_handler.handle_error(error)
+                raise ConfigValidationError("logging.max_file_size_mbは正の値である必要があります")
+            if max_file_size > 100:
+                error = ConfigError(
+                    message="logging.max_file_size_mbは100MB以下である必要があります",
+                    severity=ErrorSeverity.HIGH
+                )
+                self.error_handler.handle_error(error)
+                raise ConfigValidationError("logging.max_file_size_mbは100MB以下である必要があります")
+        
+        backup_count = self._get_nested_value(config, 'logging.backup_count')
+        if backup_count is not None:
+            if backup_count < 0:
+                error = ConfigError(
+                    message="logging.backup_countは0以上の値である必要があります",
+                    severity=ErrorSeverity.CRITICAL
+                )
+                self.error_handler.handle_error(error)
+                raise ConfigValidationError("logging.backup_countは0以上の値である必要があります")
+            if backup_count > 20:
+                error = ConfigError(
+                    message="logging.backup_countは20以下である必要があります",
+                    severity=ErrorSeverity.HIGH
+                )
+                self.error_handler.handle_error(error)
+                raise ConfigValidationError("logging.backup_countは20以下である必要があります")
     
     def _validate_config(self, config: Dict[str, Any]) -> None:
         """設定の検証"""
@@ -276,6 +350,10 @@ class ConfigManager:
     def get_execution_config(self) -> Dict[str, Any]:
         """実行設定を取得"""
         return self.config['execution']
+    
+    def get_logging_config(self) -> Dict[str, Any]:
+        """ログ設定を取得"""
+        return self.config['logging']
     
     def print_config(self) -> None:
         """現在の設定を表示（デバッグ用）"""

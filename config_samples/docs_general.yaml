@@ -52,3 +52,18 @@ execution:
   # 各リクエスト間の待機時間（秒）
   # 一般的なサーバーに配慮した設定
   request_delay: 2.0
+
+# ログ設定
+logging:
+  # コンソール出力のログレベル（一般的な使用に適したレベル）
+  console_level: "INFO"
+  # ファイル出力のログレベル（詳細な分析用）
+  file_level: "DEBUG"
+  # ログファイルを保存するディレクトリ
+  log_dir: "./logs"
+  # ログファイルの最大サイズ（MB）
+  max_file_size_mb: 10
+  # 保持するバックアップファイル数
+  backup_count: 3
+  # ファイルログを有効にするかどうか
+  enable_file_logging: true
