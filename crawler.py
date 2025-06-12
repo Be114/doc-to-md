@@ -302,10 +302,10 @@ class WebCrawler:
             if request_delay > 0 and not self.url_queue.empty():
                 time.sleep(request_delay)
         
-        self._log_crawl_summary(crawled_urls)
+        self.log_crawl_summary(crawled_urls)
         return crawled_urls
     
-    def _log_crawl_summary(self, crawled_urls: List[str]):
+    def log_crawl_summary(self, crawled_urls: List[str]):
         """クロール結果のサマリーをログ出力"""
         self.logger.info("=== クロール完了 ===")
         self.logger.info(f"成功: {self.stats['total_crawled']} ページ")
@@ -322,6 +322,32 @@ class WebCrawler:
         """指定されたURLのページ内容を取得（converter用）"""
         return self._fetch_page(url)
     
+    def normalize_url(self, url: str) -> str:
+        """Public method to normalize URLs"""
+        return self._normalize_url(url)
+    
+    def extract_links_from_content(self, url: str, html_content: str) -> List[Tuple[str, int]]:
+        """Public method to extract links from HTML content"""
+        return self._extract_links(url, html_content)
+    
+    def mark_url_as_visited(self, url: str):
+        """Mark a URL as visited"""
+        normalized = self._normalize_url(url)
+        if normalized not in self.normalized_urls:
+            self.normalized_urls[normalized] = url
+            self.visited_urls.add(url)
+            self.stats['total_crawled'] += 1
+    
+    def is_url_visited(self, url: str) -> bool:
+        """Check if a URL has been visited"""
+        normalized = self._normalize_url(url)
+        return normalized in self.normalized_urls
+    
+    def fetch_page(self, url: str) -> Optional[str]:
+        """Public method to fetch a page"""
+        return self._fetch_page(url)
+    
     def get_stats(self) -> Dict[str, int]:
         """統計情報を取得"""
         return self.stats.copy()
+    
