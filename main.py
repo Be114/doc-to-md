@@ -41,34 +41,126 @@ class DocToMarkdownTool:
         # 出力ディレクトリの準備
         self._setup_output_directory()
         
-        # クロール開始
-        print("\nページのクロールを開始します...")
-        urls = self.crawler.crawl()
+        # クロールと変換を統合実行
+        print("\nページのクロールと変換を開始します...")
+        result = self._crawl_and_convert()
         
-        if not urls:
-            print("警告: 対象となるURLが見つかりませんでした")
+        if not result['success']:
+            print("処理に失敗しました")
             return
         
-        print(f"\n{len(urls)}個のページが見つかりました。変換を開始します...\n")
+        # 結果の表示
+        self._display_results(result)
+    
+    def _crawl_and_convert(self):
+        """クロールと変換を統合実行"""
+        target_config = self.config_manager.get_target_site()
+        execution_config = self.config_manager.get_execution_config()
         
-        # 各ページを処理
-        for i, url in enumerate(urls, 1):
-            print(f"[{i}/{len(urls)}] 処理中: {url}")
+        start_url = target_config.get('start_url', '')
+        request_delay = execution_config.get('request_delay', 1.0)
+        
+        if not start_url:
+            print("エラー: start_urlが設定されていません")
+            return {'success': False}
+        
+        # 統計情報
+        processed_count = 0
+        success_count = 0
+        failed_count = 0
+        
+        # URLキューを初期化
+        self.crawler.url_queue.put(start_url, priority=0)
+        
+        while not self.crawler.url_queue.empty():
+            current_url = self.crawler.url_queue.get()
+            
+            # 重複チェック
+            normalized_url = self.crawler._normalize_url(current_url)
+            if normalized_url in self.crawler.normalized_urls:
+                self.crawler.stats['total_skipped'] += 1
+                continue
+            
+            processed_count += 1
+            print(f"[{processed_count}] 処理中: {current_url}")
             
             try:
-                # ページの内容を取得・変換・保存
-                self.converter.process_page(url)
+                # ページを取得
+                html_content = self.crawler._fetch_page(current_url)
+                if html_content is None:
+                    failed_count += 1
+                    continue
+                
+                # 訪問済みとしてマーク
+                self.crawler.normalized_urls[normalized_url] = current_url
+                self.crawler.visited_urls.add(current_url)
+                self.crawler.stats['total_crawled'] += 1
+                
+                # コンテンツを変換・保存
+                file_path = self.converter.process_page(current_url, html_content)
+                if file_path:
+                    success_count += 1
+                    print(f"  → 保存: {file_path}")
+                else:
+                    failed_count += 1
+                    print(f"  → 変換失敗")
+                
+                # 新しいリンクを抽出してキューに追加
+                links = self.crawler._extract_links(current_url, html_content)
+                added_count = 0
+                
+                for link_url, priority in links:
+                    normalized_link = self.crawler._normalize_url(link_url)
+                    if normalized_link not in self.crawler.normalized_urls:
+                        self.crawler.url_queue.put(link_url, priority)
+                        added_count += 1
+                
+                if added_count > 0:
+                    print(f"  → 新しいリンク{added_count}個を発見")
                 
                 # リクエスト間隔の調整
-                if i < len(urls):  # 最後のページでない場合
-                    delay = execution_config['request_delay']
-                    time.sleep(delay)
+                if request_delay > 0 and not self.crawler.url_queue.empty():
+                    time.sleep(request_delay)
                     
             except Exception as e:
-                print(f"エラー: {url} の処理に失敗しました: {e}")
+                print(f"  → エラー: {e}")
+                failed_count += 1
                 continue
         
-        print(f"\n処理完了! 出力ディレクトリ: {output_config['base_dir']}")
+        return {
+            'success': True,
+            'processed': processed_count,
+            'success_count': success_count,
+            'failed_count': failed_count,
+            'crawler_stats': self.crawler.get_stats(),
+            'converter_stats': self.converter.get_stats()
+        }
+    
+    def _display_results(self, result):
+        """処理結果を表示"""
+        output_config = self.config_manager.get_output_config()
+        
+        print(f"\n=== 処理完了 ===")
+        print(f"処理ページ数: {result['processed']}")
+        print(f"変換成功: {result['success_count']}")
+        print(f"変換失敗: {result['failed_count']}")
+        
+        # 成功率の計算
+        if result['processed'] > 0:
+            success_rate = (result['success_count'] / result['processed']) * 100
+            print(f"成功率: {success_rate:.1f}%")
+        
+        # 画像統計
+        converter_stats = result['converter_stats']
+        if converter_stats['images_downloaded'] > 0 or converter_stats['images_failed'] > 0:
+            print(f"画像ダウンロード成功: {converter_stats['images_downloaded']}")
+            print(f"画像ダウンロード失敗: {converter_stats['images_failed']}")
+        
+        print(f"\n出力ディレクトリ: {output_config['base_dir']}")
+        
+        # 詳細な統計をログに出力
+        self.crawler._log_crawl_summary([])
+        self.converter.log_summary()
 
 
 def main():
