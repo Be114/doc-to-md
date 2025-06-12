@@ -321,13 +321,13 @@ class WebCrawler:
             
         except Exception as e:
             error = NetworkError(
-                message=f"予期しないエラー",
+                message="予期しないエラー",
                 url=url,
                 severity=ErrorSeverity.HIGH,
                 original_exception=e
             )
             
-            can_continue = self.error_handler.handle_error(error)
+            self.error_handler.handle_error(error)
             self.stats['total_failed'] += 1
             return None
     

@@ -5,10 +5,9 @@
 
 import logging
 import logging.handlers
-import os
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from enum import Enum
 
 

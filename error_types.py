@@ -135,13 +135,19 @@ class ErrorHandler:
         
         # ログレベルの決定
         if error.severity == ErrorSeverity.CRITICAL:
-            self.logger.critical(f"[{error.error_type.value.upper()}] {error.message}")
+            self.logger.critical(f"[{error.error_type.value.upper()}] {error.message}", 
+                               exc_info=error.original_exception if error.original_exception else None)
         elif error.severity == ErrorSeverity.HIGH:
-            self.logger.error(f"[{error.error_type.value.upper()}] {error.message}")
+            if error.original_exception:
+                self.logger.exception(f"[{error.error_type.value.upper()}] {error.message}")
+            else:
+                self.logger.error(f"[{error.error_type.value.upper()}] {error.message}")
         elif error.severity == ErrorSeverity.MEDIUM:
-            self.logger.warning(f"[{error.error_type.value.upper()}] {error.message}")
+            self.logger.warning(f"[{error.error_type.value.upper()}] {error.message}", 
+                              exc_info=error.original_exception if error.original_exception else None)
         else:
-            self.logger.info(f"[{error.error_type.value.upper()}] {error.message}")
+            self.logger.info(f"[{error.error_type.value.upper()}] {error.message}", 
+                           exc_info=error.original_exception if error.original_exception else None)
         
         # 詳細情報のログ出力
         if error.url:

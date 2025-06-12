@@ -96,7 +96,7 @@ class ConfigManager:
                 original_exception=e
             )
             self.error_handler.handle_error(error)
-            raise ConfigValidationError(f"設定ファイルの読み込みに失敗しました: {e}")
+            raise ConfigValidationError(f"設定ファイルの読み込みに失敗しました: {e}") from e
         except Exception as e:
             error = ConfigError(
                 message=f"設定ファイルの読み込み中にエラーが発生しました: {e}",
@@ -104,7 +104,7 @@ class ConfigManager:
                 original_exception=e
             )
             self.error_handler.handle_error(error)
-            raise ConfigValidationError(f"設定ファイルの読み込み中にエラーが発生しました: {e}")
+            raise ConfigValidationError(f"設定ファイルの読み込み中にエラーが発生しました: {e}") from e
     
     def _merge_with_defaults(self, user_config: Dict[str, Any]) -> Dict[str, Any]:
         """ユーザー設定とデフォルト設定をマージ"""
@@ -234,7 +234,7 @@ class ConfigManager:
                         original_exception=e
                     )
                     self.error_handler.handle_error(error)
-                    raise ConfigValidationError(f"除外パターン '{pattern}' は有効な正規表現ではありません: {e}")
+                    raise ConfigValidationError(f"除外パターン '{pattern}' は有効な正規表現ではありません: {e}") from e
         
         # ログレベルの妥当性チェック
         valid_log_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']

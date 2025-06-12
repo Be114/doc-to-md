@@ -12,9 +12,8 @@ from config_manager import ConfigManager
 from crawler import WebCrawler
 from converter import MarkdownConverter
 from error_types import ErrorHandler, FileSystemError, ErrorSeverity
-from logging_manager import setup_logging, LoggingManager, StructuredLogger
+from logging_manager import setup_logging, StructuredLogger
 from improvement_advisor import ImprovementAdvisor
-import logging
 
 
 class DocToMarkdownTool:
@@ -100,7 +99,6 @@ class DocToMarkdownTool:
     
     def _crawl_and_convert(self):
         """クロールと変換を統合実行"""
-        import time
         start_time = time.time()
         
         target_config = self.config_manager.get_target_site()
@@ -173,7 +171,7 @@ class DocToMarkdownTool:
                     
             except Exception as e:
                 error = FileSystemError(
-                    message=f"ページ処理中の予期しないエラー",
+                    message="ページ処理中の予期しないエラー",
                     file_path="unknown",
                     severity=ErrorSeverity.MEDIUM,
                     original_exception=e
