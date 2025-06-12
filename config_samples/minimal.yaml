@@ -1,0 +1,24 @@
+# 最小設定例
+# 必須項目のみを含む最小構成
+# その他の設定項目はデフォルト値が使用されます
+
+# 対象サイトの設定（必須）
+target_site:
+  start_url: "https://example.com/docs/"
+  allowed_domain: "https://example.com/docs/"
+
+# クロール設定（必須）
+crawler:
+  navigation_selector: "nav"
+
+# コンテンツ抽出設定（必須）
+extractor:
+  content_selector: "main"
+
+# 出力設定（必須）
+output:
+  base_dir: "./output/minimal_docs"
+
+# その他の設定項目（crawler.exclude_patterns, output.image_dir_name, 
+# output.download_images, execution.request_delay）は
+# デフォルト値が使用されます

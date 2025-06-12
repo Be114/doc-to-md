@@ -4,46 +4,39 @@
 メインエントリーポイント
 """
 
-import os
 import sys
-import yaml
 import time
+import argparse
 from pathlib import Path
+from config_manager import ConfigManager
 from crawler import WebCrawler
 from converter import MarkdownConverter
 
 
 class DocToMarkdownTool:
     def __init__(self, config_path="config.yaml"):
-        self.config = self._load_config(config_path)
-        self.crawler = WebCrawler(self.config)
-        self.converter = MarkdownConverter(self.config)
-        
-    def _load_config(self, config_path):
-        """設定ファイルを読み込む"""
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f)
-        except FileNotFoundError:
-            print(f"エラー: 設定ファイル '{config_path}' が見つかりません")
-            sys.exit(1)
-        except yaml.YAMLError as e:
-            print(f"エラー: 設定ファイルの読み込みに失敗しました: {e}")
-            sys.exit(1)
+        self.config_manager = ConfigManager(config_path)
+        self.crawler = WebCrawler(self.config_manager.config)
+        self.converter = MarkdownConverter(self.config_manager.config)
     
     def _setup_output_directory(self):
         """出力ディレクトリを作成"""
-        output_dir = Path(self.config['output']['base_dir'])
+        output_config = self.config_manager.get_output_config()
+        output_dir = Path(output_config['base_dir'])
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        if self.config['output']['download_images']:
-            image_dir = output_dir / self.config['output']['image_dir_name']
+        if output_config['download_images']:
+            image_dir = output_dir / output_config['image_dir_name']
             image_dir.mkdir(exist_ok=True)
     
     def run(self):
         """メイン実行処理"""
+        target_config = self.config_manager.get_target_site()
+        output_config = self.config_manager.get_output_config()
+        execution_config = self.config_manager.get_execution_config()
+        
         print("技術ドキュメント一括Markdown化ツールを開始します...")
-        print(f"開始URL: {self.config['target_site']['start_url']}")
+        print(f"開始URL: {target_config['start_url']}")
         
         # 出力ディレクトリの準備
         self._setup_output_directory()
@@ -68,19 +61,48 @@ class DocToMarkdownTool:
                 
                 # リクエスト間隔の調整
                 if i < len(urls):  # 最後のページでない場合
-                    delay = self.config['execution']['request_delay']
+                    delay = execution_config['request_delay']
                     time.sleep(delay)
                     
             except Exception as e:
                 print(f"エラー: {url} の処理に失敗しました: {e}")
                 continue
         
-        print(f"\n処理完了! 出力ディレクトリ: {self.config['output']['base_dir']}")
+        print(f"\n処理完了! 出力ディレクトリ: {output_config['base_dir']}")
 
 
 def main():
     """メイン関数"""
-    tool = DocToMarkdownTool()
+    parser = argparse.ArgumentParser(
+        description='技術ドキュメント一括Markdown化ツール',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  python main.py                                    # config.yamlを使用
+  python main.py config_samples/python_docs.yaml   # 引数で設定ファイルを指定
+  python main.py --config config_samples/minimal.yaml  # --configオプションで指定
+
+設定ファイルサンプル:
+  config_samples/python_docs.yaml  - Python公式ドキュメント用
+  config_samples/docs_general.yaml - 一般的なドキュメントサイト用
+  config_samples/minimal.yaml      - 最小設定例
+        """)
+    
+    parser.add_argument(
+        'config_file', 
+        nargs='?', 
+        default='config.yaml',
+        help='設定ファイルのパス (デフォルト: config.yaml)'
+    )
+    parser.add_argument(
+        '--config', '-c',
+        dest='config_file',
+        help='設定ファイルのパス (引数と同じ)'
+    )
+    
+    args = parser.parse_args()
+    
+    tool = DocToMarkdownTool(args.config_file)
     try:
         tool.run()
     except KeyboardInterrupt:

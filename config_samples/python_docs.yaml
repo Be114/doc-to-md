@@ -1,0 +1,41 @@
+# Python公式ドキュメント用設定
+# 使用方法: python main.py --config config_samples/python_docs.yaml
+
+# 対象サイトの設定
+target_site:
+  # 処理の起点となるURL（Pythonライブラリリファレンス）
+  start_url: "https://docs.python.org/3/library/index.html"
+  # クロールを許可するURLのパターン
+  allowed_domain: "https://docs.python.org/3/library/"
+
+# クロール設定
+crawler:
+  # Pythonドキュメントのナビゲーション構造に最適化
+  navigation_selector: ".toctree-wrapper"
+  # 除外したいURLのパターン
+  exclude_patterns:
+    - ".*#.*"                    # アンカーリンクを除外
+    - ".*/search\.html"          # 検索ページを除外
+    - ".*/genindex\.html"        # 汎用インデックスを除外
+    - ".*/py-modindex\.html"     # モジュールインデックスを除外
+    - ".*\.pdf$"                 # PDFファイルを除外
+
+# コンテンツ抽出設定
+extractor:
+  # Pythonドキュメントのメインコンテンツ領域
+  content_selector: "div[role='main']"
+
+# 出力設定
+output:
+  # Markdownファイルを保存するベースディレクトリ
+  base_dir: "./output/python_docs"
+  # ダウンロードした画像を保存するディレクトリ
+  image_dir_name: "images"
+  # 画像をダウンロードするかどうか
+  download_images: true
+
+# 実行設定
+execution:
+  # 各リクエスト間の待機時間（秒）
+  # Pythonドキュメントサーバーに配慮した設定
+  request_delay: 1.5
