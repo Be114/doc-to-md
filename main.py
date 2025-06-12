@@ -64,10 +64,11 @@ class DocToMarkdownTool:
             print("エラー: start_urlが設定されていません")
             return {'success': False}
         
-        # 統計情報
+        # 統計情報とトラッキング
         processed_count = 0
         success_count = 0
         failed_count = 0
+        crawled_urls = []  # 成功したURLをトラッキング
         
         # URLキューを初期化
         self.crawler.url_queue.put(start_url, priority=0)
@@ -75,9 +76,8 @@ class DocToMarkdownTool:
         while not self.crawler.url_queue.empty():
             current_url = self.crawler.url_queue.get()
             
-            # 重複チェック
-            normalized_url = self.crawler._normalize_url(current_url)
-            if normalized_url in self.crawler.normalized_urls:
+            # 重複チェック（パブリックAPIを使用）
+            if self.crawler.is_url_visited(current_url):
                 self.crawler.stats['total_skipped'] += 1
                 continue
             
@@ -85,16 +85,15 @@ class DocToMarkdownTool:
             print(f"[{processed_count}] 処理中: {current_url}")
             
             try:
-                # ページを取得
-                html_content = self.crawler._fetch_page(current_url)
+                # ページを取得（パブリックAPIを使用）
+                html_content = self.crawler.fetch_page(current_url)
                 if html_content is None:
                     failed_count += 1
                     continue
                 
-                # 訪問済みとしてマーク
-                self.crawler.normalized_urls[normalized_url] = current_url
-                self.crawler.visited_urls.add(current_url)
-                self.crawler.stats['total_crawled'] += 1
+                # 訪問済みとしてマーク（パブリックAPIを使用）
+                self.crawler.mark_url_as_visited(current_url)
+                crawled_urls.append(current_url)  # 成功したURLを記録
                 
                 # コンテンツを変換・保存
                 file_path = self.converter.process_page(current_url, html_content)
@@ -105,13 +104,12 @@ class DocToMarkdownTool:
                     failed_count += 1
                     print(f"  → 変換失敗")
                 
-                # 新しいリンクを抽出してキューに追加
-                links = self.crawler._extract_links(current_url, html_content)
+                # 新しいリンクを抽出してキューに追加（パブリックAPIを使用）
+                links = self.crawler.extract_links_from_content(current_url, html_content)
                 added_count = 0
                 
                 for link_url, priority in links:
-                    normalized_link = self.crawler._normalize_url(link_url)
-                    if normalized_link not in self.crawler.normalized_urls:
+                    if not self.crawler.is_url_visited(link_url):
                         self.crawler.url_queue.put(link_url, priority)
                         added_count += 1
                 
@@ -132,6 +130,7 @@ class DocToMarkdownTool:
             'processed': processed_count,
             'success_count': success_count,
             'failed_count': failed_count,
+            'crawled_urls': crawled_urls,
             'crawler_stats': self.crawler.get_stats(),
             'converter_stats': self.converter.get_stats()
         }
@@ -159,7 +158,7 @@ class DocToMarkdownTool:
         print(f"\n出力ディレクトリ: {output_config['base_dir']}")
         
         # 詳細な統計をログに出力
-        self.crawler._log_crawl_summary([])
+        self.crawler._log_crawl_summary(result.get('crawled_urls', []))
         self.converter.log_summary()
 
 
