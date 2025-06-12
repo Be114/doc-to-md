@@ -11,6 +11,8 @@ from pathlib import Path
 from config_manager import ConfigManager
 from crawler import WebCrawler
 from converter import MarkdownConverter
+from error_types import ErrorHandler, FileSystemError, ErrorSeverity
+import logging
 
 
 class DocToMarkdownTool:
@@ -18,16 +20,49 @@ class DocToMarkdownTool:
         self.config_manager = ConfigManager(config_path)
         self.crawler = WebCrawler(self.config_manager.config)
         self.converter = MarkdownConverter(self.config_manager.config)
+        
+        # エラーハンドラーの初期化
+        self.logger = logging.getLogger('doc_to_markdown_tool')
+        self.error_handler = ErrorHandler(self.logger)
     
     def _setup_output_directory(self):
         """出力ディレクトリを作成"""
-        output_config = self.config_manager.get_output_config()
-        output_dir = Path(output_config['base_dir'])
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        if output_config['download_images']:
-            image_dir = output_dir / output_config['image_dir_name']
-            image_dir.mkdir(exist_ok=True)
+        try:
+            output_config = self.config_manager.get_output_config()
+            output_dir = Path(output_config['base_dir'])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            if output_config['download_images']:
+                image_dir = output_dir / output_config['image_dir_name']
+                image_dir.mkdir(exist_ok=True)
+                
+        except PermissionError as e:
+            error = FileSystemError(
+                message="出力ディレクトリの作成権限がありません",
+                file_path=str(output_dir),
+                severity=ErrorSeverity.CRITICAL,
+                original_exception=e
+            )
+            self.error_handler.handle_error(error)
+            raise
+        except OSError as e:
+            error = FileSystemError(
+                message="出力ディレクトリの作成に失敗しました",
+                file_path=str(output_dir),
+                severity=ErrorSeverity.CRITICAL,
+                original_exception=e
+            )
+            self.error_handler.handle_error(error)
+            raise
+        except Exception as e:
+            error = FileSystemError(
+                message="ディレクトリ作成中の予期しないエラー",
+                file_path=str(output_dir),
+                severity=ErrorSeverity.HIGH,
+                original_exception=e
+            )
+            self.error_handler.handle_error(error)
+            raise
     
     def run(self):
         """メイン実行処理"""
@@ -123,6 +158,13 @@ class DocToMarkdownTool:
                     time.sleep(request_delay)
                     
             except Exception as e:
+                error = FileSystemError(
+                    message=f"ページ処理中の予期しないエラー",
+                    file_path="unknown",
+                    severity=ErrorSeverity.MEDIUM,
+                    original_exception=e
+                )
+                self.error_handler.handle_error(error)
                 print(f"  → エラー: {e}")
                 failed_count += 1
                 continue
@@ -162,6 +204,10 @@ class DocToMarkdownTool:
         # 詳細な統計をログに出力
         self.crawler.log_crawl_summary(result.get('crawled_urls', []))
         self.converter.log_summary()
+        
+        # 全体のエラー統計サマリーを出力
+        print("\n=== 全体エラー統計 ===")
+        self.error_handler.log_error_summary()
 
 
 def main():

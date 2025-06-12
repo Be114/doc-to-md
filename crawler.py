@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from collections import deque
 import heapq
 from typing import Set, List, Dict, Optional, Tuple
+from error_types import ErrorHandler, NetworkError, ErrorSeverity
 
 
 class URLPriorityQueue:
@@ -46,6 +47,9 @@ class WebCrawler:
         self.config = config
         self._setup_session()
         self._setup_logging()
+        
+        # エラーハンドラーの初期化
+        self.error_handler = ErrorHandler(self.logger)
         
         # URL管理
         self.visited_urls: Set[str] = set()
@@ -218,8 +222,10 @@ class WebCrawler:
         
         return max(0, priority)
     
-    def _fetch_page(self, url: str) -> Optional[str]:
-        """ページを取得（リトライ機能付き）"""
+    def _fetch_page(self, url: str, retry_count: int = 0) -> Optional[str]:
+        """ページを取得（エラー分類とリトライ機能付き）"""
+        max_retries = 3
+        
         try:
             self.logger.info(f"ページ取得中: {url}")
             
@@ -232,16 +238,96 @@ class WebCrawler:
             
             return response.text
             
-        except requests.exceptions.Timeout:
-            self.logger.warning(f"タイムアウト: {url}")
+        except requests.exceptions.Timeout as e:
+            error = NetworkError(
+                message=f"タイムアウト ({retry_count + 1}/{max_retries})",
+                url=url,
+                severity=ErrorSeverity.MEDIUM,
+                original_exception=e
+            )
+            
+            can_continue = self.error_handler.handle_error(error)
             self.stats['total_failed'] += 1
+            
+            # リトライ判定
+            if retry_count < max_retries - 1 and self.error_handler.should_retry(error):
+                time.sleep(2 ** retry_count)  # 指数バックオフ
+                return self._fetch_page(url, retry_count + 1)
+            
             return None
+            
+        except requests.exceptions.ConnectionError as e:
+            error = NetworkError(
+                message=f"接続エラー ({retry_count + 1}/{max_retries})",
+                url=url,
+                severity=ErrorSeverity.MEDIUM,
+                original_exception=e
+            )
+            
+            can_continue = self.error_handler.handle_error(error)
+            self.stats['total_failed'] += 1
+            
+            # リトライ判定
+            if retry_count < max_retries - 1 and self.error_handler.should_retry(error):
+                time.sleep(2 ** retry_count)  # 指数バックオフ
+                return self._fetch_page(url, retry_count + 1)
+            
+            return None
+            
+        except requests.exceptions.HTTPError as e:
+            # HTTPステータスエラー（4xx, 5xxなど）
+            status_code = e.response.status_code if e.response else 0
+            
+            if 500 <= status_code < 600:  # サーバーエラーはリトライ対象
+                severity = ErrorSeverity.MEDIUM
+                should_retry = retry_count < max_retries - 1
+            else:  # クライアントエラー（404など）はリトライしない
+                severity = ErrorSeverity.LOW
+                should_retry = False
+            
+            error = NetworkError(
+                message=f"HTTPエラー {status_code} ({retry_count + 1}/{max_retries})",
+                url=url,
+                severity=severity,
+                original_exception=e
+            )
+            
+            can_continue = self.error_handler.handle_error(error)
+            self.stats['total_failed'] += 1
+            
+            if should_retry and self.error_handler.should_retry(error):
+                time.sleep(2 ** retry_count)  # 指数バックオフ
+                return self._fetch_page(url, retry_count + 1)
+            
+            return None
+            
         except requests.exceptions.RequestException as e:
-            self.logger.warning(f"リクエストエラー: {url} - {e}")
+            error = NetworkError(
+                message=f"リクエストエラー ({retry_count + 1}/{max_retries})",
+                url=url,
+                severity=ErrorSeverity.MEDIUM,
+                original_exception=e
+            )
+            
+            can_continue = self.error_handler.handle_error(error)
             self.stats['total_failed'] += 1
+            
+            # リトライ判定
+            if retry_count < max_retries - 1 and self.error_handler.should_retry(error):
+                time.sleep(2 ** retry_count)  # 指数バックオフ
+                return self._fetch_page(url, retry_count + 1)
+            
             return None
+            
         except Exception as e:
-            self.logger.error(f"予期しないエラー: {url} - {e}")
+            error = NetworkError(
+                message=f"予期しないエラー",
+                url=url,
+                severity=ErrorSeverity.HIGH,
+                original_exception=e
+            )
+            
+            can_continue = self.error_handler.handle_error(error)
             self.stats['total_failed'] += 1
             return None
     
@@ -314,6 +400,9 @@ class WebCrawler:
         self.logger.info(f"失敗: {self.stats['total_failed']} ページ")
         self.logger.info(f"スキップ: {self.stats['total_skipped']} ページ")
         self.logger.info(f"合計: {len(crawled_urls)} ページを収集")
+        
+        # エラー統計サマリーを出力
+        self.error_handler.log_error_summary()
         
         if crawled_urls:
             self.logger.info("収集したURL一覧:")
