@@ -82,7 +82,9 @@ class DocToMarkdownTool:
                 continue
             
             processed_count += 1
-            print(f"[{processed_count}] 処理中: {current_url}")
+            # 総数計算: 処理済み + 現在のキュー内URL数 + 成功/失敗済み
+            total_count = processed_count + self.crawler.url_queue.size()
+            print(f"[{processed_count}/{total_count}] 処理中: ({current_url})")
             
             try:
                 # ページを取得（パブリックAPIを使用）
