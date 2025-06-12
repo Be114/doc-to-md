@@ -15,10 +15,10 @@ crawler:
   # 除外したいURLのパターン
   exclude_patterns:
     - ".*#.*"                    # アンカーリンクを除外
-    - ".*/search\.html"          # 検索ページを除外
-    - ".*/genindex\.html"        # 汎用インデックスを除外
-    - ".*/py-modindex\.html"     # モジュールインデックスを除外
-    - ".*\.pdf$"                 # PDFファイルを除外
+    - ".*/search\\.html"         # 検索ページを除外
+    - ".*/genindex\\.html"       # 汎用インデックスを除外
+    - ".*/py-modindex\\.html"    # モジュールインデックスを除外
+    - ".*\\.pdf$"                # PDFファイルを除外
 
 # コンテンツ抽出設定
 extractor:
