@@ -283,7 +283,9 @@ class WebCrawler:
             crawled_urls.append(current_url)
             self.stats['total_crawled'] += 1
             
-            self.logger.info(f"[{self.stats['total_crawled']}] 処理完了: {current_url}")
+            # 総数計算: 処理済み + 現在のキュー内URL数
+            total_count = self.stats['total_crawled'] + self.url_queue.size()
+            self.logger.info(f"[{self.stats['total_crawled']}/{total_count}] 処理完了: ({current_url})")
             
             # リンクを抽出してキューに追加
             links = self._extract_links(current_url, html_content)
