@@ -8,7 +8,6 @@ import time
 import logging
 from urllib.parse import urljoin, urlparse, urlunparse
 from bs4 import BeautifulSoup
-from collections import deque
 import heapq
 from typing import Set, List, Dict, Optional, Tuple
 
@@ -50,6 +49,7 @@ class WebCrawler:
         # URL管理
         self.visited_urls: Set[str] = set()
         self.normalized_urls: Dict[str, str] = {}  # 正規化URL -> 元URL
+        self.queued_normalized: Set[str] = set()  # キュー済みURL（重複防止）
         self.url_queue = URLPriorityQueue()
         
         # 統計情報
@@ -136,10 +136,16 @@ class WebCrawler:
         
         # 許可されたドメインのチェック
         target_config = self.config.get('target_site', {})
-        allowed_domain = target_config.get('allowed_domain', '')
+        allowed_domain = target_config.get('allowed_domain', '').lower()
         
-        if allowed_domain and not url.startswith(allowed_domain):
-            return False, f"許可されていないドメイン: {allowed_domain}"
+        if allowed_domain:
+            try:
+                url_netloc = urlparse(url).netloc.lower()
+                allowed_netloc = urlparse(allowed_domain).netloc.lower()
+                if url_netloc != allowed_netloc:
+                    return False, f"許可されていないドメイン: {allowed_domain}"
+            except Exception:
+                return False, "ドメイン解析エラー"
         
         # 除外パターンのチェック
         crawler_config = self.config.get('crawler', {})
@@ -168,7 +174,9 @@ class WebCrawler:
             
             if not nav_elements:
                 self.logger.warning(f"ナビゲーション要素が見つかりません: {nav_selector}")
-                return links
+                # フォールバック: ページ内のすべてのリンクを対象にする
+                self.logger.info("フォールバック: ページ内のすべてのリンクを検索します")
+                nav_elements = [soup]
             
             for nav_element in nav_elements:
                 for link in nav_element.find_all('a', href=True):
@@ -203,7 +211,9 @@ class WebCrawler:
         priority = 10  # デフォルト優先度
         
         # パスの深さで優先度を調整（浅いほど高優先度）
-        path_depth = url.count('/') - 3  # http://example.com/ = 3
+        parsed_url = urlparse(url)
+        path = parsed_url.path or '/'
+        path_depth = max(0, path.rstrip('/').count('/'))
         priority += path_depth
         
         # リンクテキストで優先度を調整
@@ -291,8 +301,9 @@ class WebCrawler:
             
             for link_url, priority in links:
                 normalized_link = self._normalize_url(link_url)
-                if normalized_link not in self.normalized_urls:
+                if normalized_link not in self.normalized_urls and normalized_link not in self.queued_normalized:
                     self.url_queue.put(link_url, priority)
+                    self.queued_normalized.add(normalized_link)
                     added_count += 1
             
             if added_count > 0:
