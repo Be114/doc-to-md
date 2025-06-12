@@ -63,6 +63,10 @@ class WebCrawler:
             'total_skipped': 0
         }
         
+        # リトライとスキップ管理
+        self.retry_config = config.get('retry', {})
+        self.failed_url_counts = {}  # URL -> 失敗回数のマップ
+        
     def _setup_session(self):
         """HTTPセッションの設定"""
         self.session = requests.Session()
@@ -222,9 +226,38 @@ class WebCrawler:
         
         return max(0, priority)
     
+    def _calculate_backoff_delay(self, retry_count: int) -> float:
+        """設定可能な指数バックオフ遅延を計算"""
+        initial_delay = self.retry_config.get('initial_delay', 1.0)
+        backoff_factor = self.retry_config.get('backoff_factor', 2)
+        max_delay = self.retry_config.get('max_delay', 60.0)
+        
+        delay = initial_delay * (backoff_factor ** retry_count)
+        return min(delay, max_delay)
+    
+    def _should_skip_url(self, url: str) -> bool:
+        """URLを自動スキップすべきかどうかを判定"""
+        skip_after_failures = self.retry_config.get('skip_after_failures', 5)
+        failed_count = self.failed_url_counts.get(url, 0)
+        return failed_count >= skip_after_failures
+    
+    def _increment_failure_count(self, url: str):
+        """URL失敗カウントを増加"""
+        self.failed_url_counts[url] = self.failed_url_counts.get(url, 0) + 1
+    
+    def _should_retry_status_code(self, status_code: int) -> bool:
+        """HTTPステータスコードがリトライ対象かどうかを判定"""
+        retry_status_codes = self.retry_config.get('retry_status_codes', [429, 500, 502, 503, 504])
+        return status_code in retry_status_codes
+    
     def _fetch_page(self, url: str, retry_count: int = 0) -> Optional[str]:
-        """ページを取得（エラー分類とリトライ機能付き）"""
-        max_retries = 3
+        """ページを取得（強化されたリトライとスキップ機能付き）"""
+        # スキップ判定
+        if self._should_skip_url(url):
+            self.logger.warning(f"自動スキップ: {url} (失敗回数: {self.failed_url_counts[url]})")
+            return None
+        
+        max_retries = self.retry_config.get('max_retries', 3)
         
         try:
             self.logger.info(f"ページ取得中: {url}")
@@ -246,12 +279,15 @@ class WebCrawler:
                 original_exception=e
             )
             
-            can_continue = self.error_handler.handle_error(error)
+            self.error_handler.handle_error(error)
+            self._increment_failure_count(url)
             self.stats['total_failed'] += 1
             
             # リトライ判定
             if retry_count < max_retries - 1 and self.error_handler.should_retry(error):
-                time.sleep(2 ** retry_count)  # 指数バックオフ
+                delay = self._calculate_backoff_delay(retry_count)
+                self.logger.debug(f"リトライ前に{delay:.1f}秒待機")
+                time.sleep(delay)
                 return self._fetch_page(url, retry_count + 1)
             
             return None
@@ -264,12 +300,15 @@ class WebCrawler:
                 original_exception=e
             )
             
-            can_continue = self.error_handler.handle_error(error)
+            self.error_handler.handle_error(error)
+            self._increment_failure_count(url)
             self.stats['total_failed'] += 1
             
             # リトライ判定
             if retry_count < max_retries - 1 and self.error_handler.should_retry(error):
-                time.sleep(2 ** retry_count)  # 指数バックオフ
+                delay = self._calculate_backoff_delay(retry_count)
+                self.logger.debug(f"リトライ前に{delay:.1f}秒待機")
+                time.sleep(delay)
                 return self._fetch_page(url, retry_count + 1)
             
             return None
@@ -278,10 +317,11 @@ class WebCrawler:
             # HTTPステータスエラー（4xx, 5xxなど）
             status_code = e.response.status_code if e.response else 0
             
-            if 500 <= status_code < 600:  # サーバーエラーはリトライ対象
+            # 設定可能なステータスコードベースのリトライ判定
+            if self._should_retry_status_code(status_code):
                 severity = ErrorSeverity.MEDIUM
                 should_retry = retry_count < max_retries - 1
-            else:  # クライアントエラー（404など）はリトライしない
+            else:  # リトライ対象外のステータスコード
                 severity = ErrorSeverity.LOW
                 should_retry = False
             
@@ -292,11 +332,14 @@ class WebCrawler:
                 original_exception=e
             )
             
-            can_continue = self.error_handler.handle_error(error)
+            self.error_handler.handle_error(error)
+            self._increment_failure_count(url)
             self.stats['total_failed'] += 1
             
             if should_retry and self.error_handler.should_retry(error):
-                time.sleep(2 ** retry_count)  # 指数バックオフ
+                delay = self._calculate_backoff_delay(retry_count)
+                self.logger.debug(f"リトライ前に{delay:.1f}秒待機")
+                time.sleep(delay)
                 return self._fetch_page(url, retry_count + 1)
             
             return None
@@ -309,12 +352,15 @@ class WebCrawler:
                 original_exception=e
             )
             
-            can_continue = self.error_handler.handle_error(error)
+            self.error_handler.handle_error(error)
+            self._increment_failure_count(url)
             self.stats['total_failed'] += 1
             
             # リトライ判定
             if retry_count < max_retries - 1 and self.error_handler.should_retry(error):
-                time.sleep(2 ** retry_count)  # 指数バックオフ
+                delay = self._calculate_backoff_delay(retry_count)
+                self.logger.debug(f"リトライ前に{delay:.1f}秒待機")
+                time.sleep(delay)
                 return self._fetch_page(url, retry_count + 1)
             
             return None
@@ -328,6 +374,7 @@ class WebCrawler:
             )
             
             self.error_handler.handle_error(error)
+            self._increment_failure_count(url)
             self.stats['total_failed'] += 1
             return None
     
@@ -395,11 +442,22 @@ class WebCrawler:
     
     def log_crawl_summary(self, crawled_urls: List[str]):
         """クロール結果のサマリーをログ出力"""
+        stats = self.get_stats()
         self.logger.info("=== クロール完了 ===")
         self.logger.info(f"成功: {self.stats['total_crawled']} ページ")
         self.logger.info(f"失敗: {self.stats['total_failed']} ページ")
         self.logger.info(f"スキップ: {self.stats['total_skipped']} ページ")
+        if stats['auto_skipped'] > 0:
+            self.logger.info(f"自動スキップ: {stats['auto_skipped']} ページ")
         self.logger.info(f"合計: {len(crawled_urls)} ページを収集")
+        
+        # 失敗したURLの詳細
+        if self.failed_url_counts:
+            self.logger.info("=== 失敗URL統計 ===")
+            sorted_failures = sorted(self.failed_url_counts.items(), key=lambda x: x[1], reverse=True)
+            for url, count in sorted_failures[:10]:  # 上位10件
+                status = "自動スキップ" if count >= self.retry_config.get('skip_after_failures', 5) else "失敗"
+                self.logger.info(f"  {status}: {url} ({count}回)")
         
         # エラー統計サマリーを出力
         self.error_handler.log_error_summary()
@@ -440,5 +498,12 @@ class WebCrawler:
     
     def get_stats(self) -> Dict[str, int]:
         """統計情報を取得"""
-        return self.stats.copy()
+        stats = self.stats.copy()
+        stats['auto_skipped'] = len([url for url, count in self.failed_url_counts.items() 
+                                   if count >= self.retry_config.get('skip_after_failures', 5)])
+        return stats
+    
+    def get_failed_urls_summary(self) -> Dict[str, int]:
+        """失敗したURLの統計を取得"""
+        return self.failed_url_counts.copy()
     

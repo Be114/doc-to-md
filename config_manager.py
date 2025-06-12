@@ -46,6 +46,20 @@ class ConfigManager:
         'execution': {
             'request_delay': 1.0
         },
+        'retry': {
+            'max_retries': 3,
+            'backoff_factor': 2,
+            'initial_delay': 1.0,
+            'max_delay': 60.0,
+            'retry_status_codes': [429, 500, 502, 503, 504],
+            'skip_after_failures': 5
+        },
+        'recovery': {
+            'enable_recovery': True,
+            'save_interval': 10,
+            'recovery_file': './recovery_state.json',
+            'auto_resume': True
+        },
         'logging': {
             'console_level': 'INFO',
             'file_level': 'DEBUG',
@@ -157,6 +171,16 @@ class ConfigManager:
             ('output.image_dir_name', str),
             ('output.download_images', bool),
             ('execution.request_delay', (int, float)),
+            ('retry.max_retries', int),
+            ('retry.backoff_factor', (int, float)),
+            ('retry.initial_delay', (int, float)),
+            ('retry.max_delay', (int, float)),
+            ('retry.retry_status_codes', list),
+            ('retry.skip_after_failures', int),
+            ('recovery.enable_recovery', bool),
+            ('recovery.save_interval', int),
+            ('recovery.recovery_file', str),
+            ('recovery.auto_resume', bool),
             ('logging.console_level', str),
             ('logging.file_level', str),
             ('logging.log_dir', str),
@@ -220,6 +244,79 @@ class ConfigManager:
                 )
                 self.error_handler.handle_error(error)
                 raise ConfigValidationError("request_delayは60秒以下である必要があります")
+        
+        # リトライ設定の値チェック
+        max_retries = self._get_nested_value(config, 'retry.max_retries')
+        if max_retries is not None:
+            if max_retries < 0:
+                error = ConfigError(
+                    message="retry.max_retriesは0以上の値である必要があります",
+                    severity=ErrorSeverity.CRITICAL
+                )
+                self.error_handler.handle_error(error)
+                raise ConfigValidationError("retry.max_retriesは0以上の値である必要があります")
+            if max_retries > 10:
+                error = ConfigError(
+                    message="retry.max_retriesは10以下である必要があります",
+                    severity=ErrorSeverity.HIGH
+                )
+                self.error_handler.handle_error(error)
+                raise ConfigValidationError("retry.max_retriesは10以下である必要があります")
+        
+        backoff_factor = self._get_nested_value(config, 'retry.backoff_factor')
+        if backoff_factor is not None and (backoff_factor < 1 or backoff_factor > 10):
+            error = ConfigError(
+                message="retry.backoff_factorは1以上10以下である必要があります",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError("retry.backoff_factorは1以上10以下である必要があります")
+        
+        initial_delay = self._get_nested_value(config, 'retry.initial_delay')
+        if initial_delay is not None and (initial_delay < 0 or initial_delay > 30):
+            error = ConfigError(
+                message="retry.initial_delayは0以上30秒以下である必要があります",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError("retry.initial_delayは0以上30秒以下である必要があります")
+        
+        max_delay = self._get_nested_value(config, 'retry.max_delay')
+        if max_delay is not None and (max_delay < 1 or max_delay > 300):
+            error = ConfigError(
+                message="retry.max_delayは1秒以上300秒以下である必要があります",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError("retry.max_delayは1秒以上300秒以下である必要があります")
+        
+        skip_after_failures = self._get_nested_value(config, 'retry.skip_after_failures')
+        if skip_after_failures is not None and (skip_after_failures < 1 or skip_after_failures > 20):
+            error = ConfigError(
+                message="retry.skip_after_failuresは1以上20以下である必要があります",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError("retry.skip_after_failuresは1以上20以下である必要があります")
+        
+        # リカバリ設定の値チェック
+        save_interval = self._get_nested_value(config, 'recovery.save_interval')
+        if save_interval is not None and (save_interval < 1 or save_interval > 100):
+            error = ConfigError(
+                message="recovery.save_intervalは1以上100以下である必要があります",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError("recovery.save_intervalは1以上100以下である必要があります")
+        
+        recovery_file = self._get_nested_value(config, 'recovery.recovery_file')
+        if recovery_file is not None and not recovery_file.strip():
+            error = ConfigError(
+                message="recovery.recovery_fileは空文字列にできません",
+                severity=ErrorSeverity.CRITICAL
+            )
+            self.error_handler.handle_error(error)
+            raise ConfigValidationError("recovery.recovery_fileは空文字列にできません")
         
         # 除外パターンの正規表現チェック
         exclude_patterns = self._get_nested_value(config, 'crawler.exclude_patterns')
@@ -354,6 +451,14 @@ class ConfigManager:
     def get_logging_config(self) -> Dict[str, Any]:
         """ログ設定を取得"""
         return self.config['logging']
+    
+    def get_retry_config(self) -> Dict[str, Any]:
+        """リトライ設定を取得"""
+        return self.config['retry']
+    
+    def get_recovery_config(self) -> Dict[str, Any]:
+        """リカバリ設定を取得"""
+        return self.config['recovery']
     
     def print_config(self) -> None:
         """現在の設定を表示（デバッグ用）"""

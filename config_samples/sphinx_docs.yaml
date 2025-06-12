@@ -1,0 +1,56 @@
+# Sphinx ドキュメント用設定
+# Sphinxで生成されたドキュメントサイト（readthedocs.org等）用
+
+target_site:
+  # 処理の起点となるURL
+  start_url: "https://your-project.readthedocs.io/en/latest/"
+  # クロールを許可するURLのパターン
+  allowed_domain: "https://your-project.readthedocs.io/en/latest/"
+
+crawler:
+  # Sphinxの特徴的なナビゲーション構造
+  navigation_selector: ".toctree-wrapper, .wy-menu-vertical"
+  exclude_patterns:
+    - ".*#.*"                    # アンカーリンク
+    - ".*/search\\.html"         # 検索ページ
+    - ".*/genindex\\.html"       # 汎用インデックス
+    - ".*/py-modindex\\.html"    # Pythonモジュールインデックス
+    - ".*/glossary\\.html"       # 用語集
+    - ".*\\.pdf$"                # PDFダウンロード
+    - ".*/_sources/.*"           # ソースファイル
+    - ".*/_static/.*"            # 静的ファイル
+    - ".*/edit/.*"               # 編集リンク
+
+extractor:
+  # Sphinxの標準的なコンテンツ構造
+  content_selector: "div[role='main'], .wy-nav-content-wrap main"
+
+output:
+  base_dir: "./output/sphinx_docs"
+  image_dir_name: "images"
+  download_images: true
+
+execution:
+  request_delay: 1.5  # readthedocs.orgへの配慮
+
+retry:
+  max_retries: 4      # Sphinxサイトは安定しているため多めに
+  backoff_factor: 2
+  initial_delay: 1.0
+  max_delay: 60.0
+  retry_status_codes: [429, 500, 502, 503, 504]
+  skip_after_failures: 6
+
+recovery:
+  enable_recovery: true
+  save_interval: 8
+  recovery_file: "./recovery_sphinx.json"
+  auto_resume: true
+
+logging:
+  console_level: "INFO"
+  file_level: "DEBUG"
+  log_dir: "./logs"
+  max_file_size_mb: 8
+  backup_count: 5
+  enable_file_logging: true

@@ -53,6 +53,32 @@ execution:
   # 一般的なサーバーに配慮した設定
   request_delay: 2.0
 
+# リトライ設定（Phase 7.4で追加）
+retry:
+  # 最大リトライ回数
+  max_retries: 3
+  # バックオフ係数（指数バックオフ）
+  backoff_factor: 2
+  # 初期遅延時間（秒）
+  initial_delay: 1.0
+  # 最大遅延時間（秒）
+  max_delay: 60.0
+  # リトライ対象のHTTPステータスコード
+  retry_status_codes: [429, 500, 502, 503, 504]
+  # この回数失敗したURLは自動スキップ
+  skip_after_failures: 5
+
+# リカバリ設定（Phase 7.4で追加）
+recovery:
+  # リカバリ機能を有効にするか
+  enable_recovery: true
+  # 状態保存の間隔（ページ数）
+  save_interval: 10
+  # リカバリファイルのパス
+  recovery_file: "./recovery_docs.json"
+  # 自動再開を有効にするか
+  auto_resume: true
+
 # ログ設定
 logging:
   # コンソール出力のログレベル（一般的な使用に適したレベル）

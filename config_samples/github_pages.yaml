@@ -1,0 +1,53 @@
+# GitHub Pages / Jekyll ドキュメント用設定
+# GitHub Pagesでホストされているドキュメントサイト用
+
+target_site:
+  # 処理の起点となるURL
+  start_url: "https://username.github.io/project-name/"
+  # クロールを許可するURLのパターン
+  allowed_domain: "https://username.github.io/project-name/"
+
+crawler:
+  # GitHub Pagesの一般的なナビゲーション構造
+  navigation_selector: "nav, .sidebar, .sidebar-nav"
+  exclude_patterns:
+    - ".*#.*"                    # アンカーリンク
+    - ".*/search.*"              # 検索ページ
+    - ".*\\.pdf$"                # PDFファイル
+    - ".*\\.zip$"                # ダウンロードファイル
+    - ".*/edit.*"                # GitHub編集リンク
+    - ".*/blob/.*"               # GitHubソースコード
+
+extractor:
+  # GitHub Pagesの一般的なコンテンツ領域
+  content_selector: "main, .content, .markdown-body"
+
+output:
+  base_dir: "./output/github_pages"
+  image_dir_name: "images"
+  download_images: true
+
+execution:
+  request_delay: 1.0  # GitHub Pagesは高速
+
+retry:
+  max_retries: 3
+  backoff_factor: 2
+  initial_delay: 0.5
+  max_delay: 30.0
+  retry_status_codes: [429, 500, 502, 503, 504]
+  skip_after_failures: 3
+
+recovery:
+  enable_recovery: true
+  save_interval: 15
+  recovery_file: "./recovery_github_pages.json"
+  auto_resume: true
+
+logging:
+  console_level: "INFO"
+  file_level: "DEBUG"
+  log_dir: "./logs"
+  max_file_size_mb: 5
+  backup_count: 3
+  enable_file_logging: true

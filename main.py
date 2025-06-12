@@ -14,6 +14,7 @@ from converter import MarkdownConverter
 from error_types import ErrorHandler, FileSystemError, ErrorSeverity
 from logging_manager import setup_logging, StructuredLogger
 from improvement_advisor import ImprovementAdvisor
+from recovery_manager import RecoveryManager
 
 
 class DocToMarkdownTool:
@@ -34,6 +35,9 @@ class DocToMarkdownTool:
         
         # エラーハンドラーの初期化
         self.error_handler = ErrorHandler(self.logger)
+        
+        # リカバリマネージャーの初期化
+        self.recovery_manager = RecoveryManager(self.config_manager.config, self.logger)
     
     def _setup_output_directory(self):
         """出力ディレクトリを作成"""
@@ -77,28 +81,55 @@ class DocToMarkdownTool:
     def run(self):
         """メイン実行処理"""
         target_config = self.config_manager.get_target_site()
-        output_config = self.config_manager.get_output_config()
-        execution_config = self.config_manager.get_execution_config()
+        recovery_config = self.config_manager.get_recovery_config()
         
         print("技術ドキュメント一括Markdown化ツールを開始します...")
         print(f"開始URL: {target_config['start_url']}")
         
+        # リカバリファイルの確認
+        resume_from_recovery = False
+        if self.recovery_manager.can_resume() and recovery_config.get('auto_resume', True):
+            response = input("\n前回の処理が途中で中断されています。続きから再開しますか？ (y/n): ").strip().lower()
+            if response in ['y', 'yes']:
+                if self.recovery_manager.load_state():
+                    resume_from_recovery = True
+                    print("前回の処理から再開します...")
+                else:
+                    print("リカバリに失敗しました。最初から開始します...")
+            else:
+                print("最初から開始します...")
+                self.recovery_manager.cleanup_recovery_file()
+        
         # 出力ディレクトリの準備
         self._setup_output_directory()
         
-        # クロールと変換を統合実行
-        print("\nページのクロールと変換を開始します...")
-        result = self._crawl_and_convert()
-        
-        if not result['success']:
-            print("処理に失敗しました")
-            return
-        
-        # 結果の表示
-        self._display_results(result)
+        try:
+            # クロールと変換を統合実行
+            print("\nページのクロールと変換を開始します...")
+            result = self._crawl_and_convert(resume_from_recovery)
+            
+            if not result['success']:
+                print("処理に失敗しました")
+                return
+            
+            # 正常完了時はリカバリファイルを削除
+            self.recovery_manager.cleanup_recovery_file()
+            
+            # 結果の表示
+            self._display_results(result)
+            
+        except KeyboardInterrupt:
+            print("\n\n処理が中断されました")
+            # 中断時に現在の状態を保存
+            self._save_interruption_state()
+            raise
+        except Exception as e:
+            # 予期しないエラー時も状態を保存
+            self._save_interruption_state()
+            raise
     
-    def _crawl_and_convert(self):
-        """クロールと変換を統合実行"""
+    def _crawl_and_convert(self, resume_from_recovery: bool = False):
+        """クロールと変換を統合実行（リカバリ対応）"""
         start_time = time.time()
         
         target_config = self.config_manager.get_target_site()
@@ -111,13 +142,34 @@ class DocToMarkdownTool:
             print("エラー: start_urlが設定されていません")
             return {'success': False}
         
-        # 統計情報とトラッキング
-        processed_count = 0
-        success_count = 0
-        failed_count = 0
-        crawled_urls = []  # 成功したURLをトラッキング
+        # 統計情報とトラッキング（リカバリからの復元対応）
+        if resume_from_recovery:
+            processed_count = self.recovery_manager.state.processed_count
+            success_count = self.recovery_manager.state.success_count
+            failed_count = self.recovery_manager.state.failed_count
+            crawled_urls = self.recovery_manager.state.crawled_urls.copy()
+            
+            # クローラーの状態を復元
+            self.crawler.visited_urls = self.recovery_manager.state.visited_urls.copy()
+            self.crawler.failed_url_counts = self.recovery_manager.state.failed_url_counts.copy()
+            
+            # 正規化URLマップを再構築
+            for url in self.recovery_manager.state.visited_urls:
+                normalized = self.crawler._normalize_url(url)
+                self.crawler.normalized_urls[normalized] = url
+            
+            # 統計を更新
+            self.crawler.stats['total_crawled'] = len(crawled_urls)
+            
+            print(f"リカバリ: {processed_count}ページから再開")
+            print("注意: リカバリ時は開始URLから再度リンク発見を行います")
+        else:
+            processed_count = 0
+            success_count = 0
+            failed_count = 0
+            crawled_urls = []
         
-        # URLキューを初期化
+        # URLキューを初期化（リカバリ時も開始URLから再探索）
         self.crawler.url_queue.put(start_url, priority=0)
         
         while not self.crawler.url_queue.empty():
@@ -164,6 +216,17 @@ class DocToMarkdownTool:
                 
                 if added_count > 0:
                     print(f"  → 新しいリンク{added_count}個を発見")
+                
+                # 定期的な状態保存
+                self.recovery_manager.save_state(
+                    start_url=start_url,
+                    visited_urls=self.crawler.visited_urls,
+                    failed_url_counts=self.crawler.failed_url_counts,
+                    processed_count=processed_count,
+                    success_count=success_count,
+                    failed_count=failed_count,
+                    crawled_urls=crawled_urls
+                )
                 
                 # リクエスト間隔の調整
                 if request_delay > 0 and not self.crawler.url_queue.empty():
@@ -245,6 +308,39 @@ class DocToMarkdownTool:
         
         # ログにも出力
         advisor.log_suggestions(suggestions)
+    
+    def _save_interruption_state(self):
+        """中断時の状態保存"""
+        try:
+            # 現在の処理状況を取得（可能な限り）
+            visited_urls = getattr(self.crawler, 'visited_urls', set())
+            failed_url_counts = getattr(self.crawler, 'failed_url_counts', {})
+            
+            # 処理済みURLから統計を推定
+            processed_count = len(visited_urls)
+            success_count = getattr(self.crawler, 'stats', {}).get('total_crawled', 0)
+            failed_count = getattr(self.crawler, 'stats', {}).get('total_failed', 0)
+            crawled_urls = list(visited_urls)
+            
+            # 開始URLを取得
+            target_config = self.config_manager.get_target_site()
+            start_url = target_config.get('start_url', '')
+            
+            # 強制保存
+            self.recovery_manager.force_save_current_state(
+                start_url=start_url,
+                visited_urls=visited_urls,
+                failed_url_counts=failed_url_counts,
+                processed_count=processed_count,
+                success_count=success_count,
+                failed_count=failed_count,
+                crawled_urls=crawled_urls
+            )
+            
+            print(f"現在の進行状況をリカバリファイルに保存しました: {processed_count}ページ処理済み")
+            
+        except Exception as e:
+            self.logger.error(f"中断時の状態保存に失敗: {e}")
 
 
 def main():

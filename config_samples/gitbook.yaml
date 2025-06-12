@@ -1,0 +1,54 @@
+# GitBook ドキュメント用設定
+# GitBookでホストされているドキュメントサイト用
+
+target_site:
+  # 処理の起点となるURL
+  start_url: "https://your-org.gitbook.io/project-name/"
+  # クロールを許可するURLのパターン
+  allowed_domain: "https://your-org.gitbook.io/project-name/"
+
+crawler:
+  # GitBookの特徴的なサイドバーナビゲーション
+  navigation_selector: ".sidebar, [data-testid='sidebar'], .book-summary"
+  exclude_patterns:
+    - ".*#.*"                    # アンカーリンク
+    - ".*/search.*"              # 検索機能
+    - ".*\\.pdf$"                # PDFエクスポート
+    - ".*/edit.*"                # 編集モード
+    - ".*/admin.*"               # 管理画面
+    - ".*/discussions.*"         # ディスカッション
+    - ".*/activity.*"            # アクティビティ
+
+extractor:
+  # GitBookのメインコンテンツ領域
+  content_selector: "main, .page-inner, [data-testid='content']"
+
+output:
+  base_dir: "./output/gitbook"
+  image_dir_name: "images"
+  download_images: true
+
+execution:
+  request_delay: 2.0  # GitBookは動的なため少し長めに
+
+retry:
+  max_retries: 3
+  backoff_factor: 2
+  initial_delay: 2.0  # GitBookは反応が遅い場合があるため
+  max_delay: 90.0
+  retry_status_codes: [429, 500, 502, 503, 504]
+  skip_after_failures: 4
+
+recovery:
+  enable_recovery: true
+  save_interval: 12
+  recovery_file: "./recovery_gitbook.json"
+  auto_resume: true
+
+logging:
+  console_level: "INFO"
+  file_level: "DEBUG"
+  log_dir: "./logs"
+  max_file_size_mb: 6
+  backup_count: 4
+  enable_file_logging: true

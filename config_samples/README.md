@@ -34,6 +34,64 @@ python main.py config_samples/docs_general.yaml
 python main.py config_samples/minimal.yaml
 ```
 
+### 4. sphinx_docs.yaml
+**用途**: Sphinxドキュメント用
+- 対象: readthedocs.org、Sphinxベースのサイト
+- 特徴: Sphinxの特徴的な構造に最適化（toctree等）
+- セレクター: `.toctree-wrapper, .wy-menu-vertical` (ナビゲーション)、`div[role='main']` (コンテンツ)
+
+```bash
+python main.py config_samples/sphinx_docs.yaml
+```
+
+### 5. github_pages.yaml
+**用途**: GitHub Pages / Jekyll用
+- 対象: GitHub Pagesでホストされているドキュメント
+- 特徴: Jekyll、GitHub Pagesの構造に最適化
+- セレクター: `nav, .sidebar, .sidebar-nav` (ナビゲーション)、`main, .content, .markdown-body` (コンテンツ)
+
+```bash
+python main.py config_samples/github_pages.yaml
+```
+
+### 6. gitbook.yaml
+**用途**: GitBook用
+- 対象: GitBookでホストされているドキュメント
+- 特徴: GitBookの動的な構造に対応
+- セレクター: `.sidebar, [data-testid='sidebar']` (ナビゲーション)、`main, .page-inner` (コンテンツ)
+
+```bash
+python main.py config_samples/gitbook.yaml
+```
+
+## 新機能（Phase 7.4）
+
+### リトライ機能強化
+すべての設定例にリトライ機能が追加されました：
+
+```yaml
+retry:
+  max_retries: 3                    # 最大リトライ回数
+  backoff_factor: 2                 # 指数バックオフ係数
+  initial_delay: 1.0                # 初期遅延時間（秒）
+  max_delay: 60.0                   # 最大遅延時間（秒）
+  retry_status_codes: [429, 500, 502, 503, 504]  # リトライ対象ステータス
+  skip_after_failures: 5            # 自動スキップする失敗回数
+```
+
+### リカバリ機能
+処理中断時の自動保存・再開機能：
+
+```yaml
+recovery:
+  enable_recovery: true             # リカバリ機能の有効化
+  save_interval: 10                 # 状態保存間隔（ページ数）
+  recovery_file: "./recovery.json"  # リカバリファイルパス
+  auto_resume: true                 # 自動再開の有効化
+```
+
+中断されたクロール処理は次回実行時に自動的に再開できます。
+
 ## カスタム設定の作成
 
 新しいサイトに対応するには：
