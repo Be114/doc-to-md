@@ -34,3 +34,22 @@ output:
 execution:
   # 各リクエスト間の待機時間（秒）。サーバーに負荷をかけないため。
   request_delay: 1
+
+# ログ設定
+logging:
+  # コンソール出力のログレベル (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  console_level: "INFO"
+  # ファイル出力のログレベル (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  file_level: "DEBUG"
+  # ログファイルを保存するディレクトリ
+  log_dir: "./logs"
+  # ログファイルの最大サイズ（MB）
+  max_file_size_mb: 5
+  # 保持するバックアップファイル数
+  backup_count: 5
+  # ファイルログを有効にするかどうか (true/false)
+  enable_file_logging: true
+  # ログのフォーマット
+  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  # 日付のフォーマット
+  date_format: "%Y-%m-%d %H:%M:%S"

@@ -11,6 +11,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup
 import html2text
 from typing import Optional, Dict, Any
+from error_types import ErrorHandler, ContentExtractionError, FileSystemError, ErrorSeverity
 
 
 class MarkdownConverter:
@@ -19,6 +20,9 @@ class MarkdownConverter:
         self._setup_html2text()
         self._setup_logging()
         self._setup_session()
+        
+        # エラーハンドラーの初期化
+        self.error_handler = ErrorHandler(self.logger)
         
         # 統計情報
         self.stats = {
@@ -95,7 +99,7 @@ class MarkdownConverter:
             value = value[key]
         return value
         
-    def _extract_content(self, html_content: str) -> Optional[str]:
+    def _extract_content(self, html_content: str, url: str = "unknown") -> Optional[str]:
         """HTMLからメインコンテンツを抽出"""
         try:
             soup = BeautifulSoup(html_content, 'lxml')
@@ -107,13 +111,22 @@ class MarkdownConverter:
             content_elements = soup.select(content_selector)
             
             if not content_elements:
-                self.logger.warning(f"コンテンツが見つかりませんでした。セレクター: {content_selector}")
                 # フォールバック: body要素を使用
                 content_elements = soup.select('body')
                 if content_elements:
-                    self.logger.info("フォールバック: body要素を使用します")
+                    error = ContentExtractionError(
+                        message=f"メインコンテンツが見つからず、body要素を使用",
+                        url=url,
+                        severity=ErrorSeverity.LOW
+                    )
+                    self.error_handler.handle_error(error)
                 else:
-                    self.logger.error("body要素も見つかりませんでした")
+                    error = ContentExtractionError(
+                        message="コンテンツもbody要素も見つかりません",
+                        url=url,
+                        severity=ErrorSeverity.MEDIUM
+                    )
+                    self.error_handler.handle_error(error)
                     return None
                     
             # 最初の要素を使用
@@ -125,7 +138,13 @@ class MarkdownConverter:
             return str(main_content)
             
         except Exception as e:
-            self.logger.error(f"コンテンツ抽出エラー: {e}")
+            error = ContentExtractionError(
+                message="コンテンツ抽出中の予期しないエラー",
+                url=url,
+                severity=ErrorSeverity.MEDIUM,
+                original_exception=e
+            )
+            self.error_handler.handle_error(error)
             return None
     
     def _clean_content(self, content_element):
@@ -348,8 +367,32 @@ class MarkdownConverter:
             self.logger.debug(f"Markdownファイル保存: {file_path}")
             return file_path
             
+        except PermissionError as e:
+            error = FileSystemError(
+                message="ファイル書き込み権限がありません",
+                file_path=str(file_path),
+                severity=ErrorSeverity.HIGH,
+                original_exception=e
+            )
+            self.error_handler.handle_error(error)
+            return None
+        except OSError as e:
+            error = FileSystemError(
+                message="ファイルシステムエラー",
+                file_path=str(file_path),
+                severity=ErrorSeverity.MEDIUM,
+                original_exception=e
+            )
+            self.error_handler.handle_error(error)
+            return None
         except Exception as e:
-            self.logger.error(f"Markdownファイル保存エラー: {url} - {e}")
+            error = FileSystemError(
+                message="Markdownファイル保存中の予期しないエラー",
+                file_path=str(file_path),
+                severity=ErrorSeverity.MEDIUM,
+                original_exception=e
+            )
+            self.error_handler.handle_error(error)
             return None
     
     def process_page(self, url: str, html_content: str = None) -> Optional[Path]:
@@ -366,9 +409,8 @@ class MarkdownConverter:
                 return None
             
             # メインコンテンツを抽出
-            main_content = self._extract_content(html_content)
+            main_content = self._extract_content(html_content, url)
             if main_content is None:
-                self.logger.error(f"コンテンツ抽出に失敗: {url}")
                 self.stats['total_failed'] += 1
                 return None
             
@@ -414,3 +456,6 @@ class MarkdownConverter:
         if self.stats['total_processed'] > 0:
             success_rate = (self.stats['total_success'] / self.stats['total_processed']) * 100
             self.logger.info(f"成功率: {success_rate:.1f}%")
+        
+        # エラー統計サマリーを出力
+        self.error_handler.log_error_summary()
